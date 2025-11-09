@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .models import AnalysisOutput, PullRequestInfo
+from .models import AnalysisOutput, PullRequestInfo, FunctionChange
 
 
 class LivingDocsGenerator:
@@ -40,31 +40,63 @@ class LivingDocsGenerator:
             lines.append(ai_summary.summary.strip())
             lines.append("")
 
+        behavior_items = []
         if ai_summary and ai_summary.behavior_changes:
-            lines.append("## Behavior Changes")
+            for change in ai_summary.behavior_changes:
+                bullet = f"- {change}"
+                if bullet not in behavior_items:
+                    behavior_items.append(bullet)
+        for file in analysis.parsed_diff.files:
+            for change in file.function_changes:
+                formatted = self._format_function_behavior(
+                    file.filename, change)
+                if formatted not in behavior_items:
+                    behavior_items.append(formatted)
+        if behavior_items:
+            lines.append("## Modified Methods / Classes")
             lines.append("")
-            for item in ai_summary.behavior_changes:
-                lines.append(f"- {item}")
+            for item in behavior_items:
+                lines.append(item)
             lines.append("")
 
         if risk and (risk.high_risk_files or risk.missing_tests or risk.deprecated_apis or risk.notes):
-            lines.append("## Risks & Flags")
+            lines.append("## Risks & Potential Issues")
             lines.append("")
             if risk.high_risk_files:
                 lines.append(
-                    f"- High-risk files: {', '.join(risk.high_risk_files)}")
+                    f"- High-risk files modified: {', '.join(risk.high_risk_files)}")
             if risk.missing_tests:
-                lines.append("- Missing related tests for code changes.")
+                lines.append("- Missing related tests covering modified code.")
             for item in risk.deprecated_apis:
                 lines.append(f"- Deprecated API: {item}")
             for note in risk.notes:
                 lines.append(f"- {note}")
             lines.append("")
 
+        suggested_actions = []
         if ai_summary and ai_summary.suggested_actions:
+            filtered = [
+                action.strip()
+                for action in ai_summary.suggested_actions
+                if action
+                and action.strip().lower()
+                not in {
+                    "check for any potential security vulnerabilities introduced by new changes",
+                    "verify that all modified functions maintain expected behavior",
+                    "review the new server functionality and ensure it meets requirements",
+                }
+            ]
+            suggested_actions.extend(filtered)
+
+        if risk and risk.missing_tests:
+            if not any("unit test" in action.lower() for action in suggested_actions):
+                suggested_actions.append(
+                    "Add unit tests covering the modified functions.")
+
+        if suggested_actions:
             lines.append("## Suggested Actions")
             lines.append("")
-            for item in ai_summary.suggested_actions:
+            for item in suggested_actions:
                 lines.append(f"- {item}")
             lines.append("")
 
@@ -79,10 +111,28 @@ class LivingDocsGenerator:
                     lines.append("")
                     lines.append("Function-level changes:")
                     for change in file.function_changes:
-                        lines.append(f"- {change.summary}")
+                        lines.append(
+                            f"- {self._format_function_behavior(file.filename, change)}")
                 lines.append("")
 
         return "\n".join(lines).strip() + "\n"
+
+    def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
+        function_name = "module-level logic" if change.name == "<module>" else change.name
+        if change.change_type == "renamed" and change.previous_name:
+            detail = f"Renamed `{change.previous_name}` to `{function_name}` in `{filename}`"
+        else:
+            detail = f"{change.change_type.title()} `{function_name}` in `{filename}`"
+
+        line_delta = ""
+        if change.lines_added or change.lines_removed:
+            line_delta = f" (+{change.lines_added}/-{change.lines_removed} lines)"
+
+        summary = change.summary or ""
+        summary = summary.replace("()", "")
+        summary_detail = f" — {summary}" if summary else ""
+
+        return f"- `{filename}` · {detail}{line_delta}{summary_detail}"
 
 
 def commit_living_doc(

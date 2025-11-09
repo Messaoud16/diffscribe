@@ -70,6 +70,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Commit living documentation changes after generation.")
     parser.add_argument("--include-all-functions", action="store_true",
                         help="Explicitly list every detected function change in the summary output.")
+    parser.add_argument("--full-report", action="store_true",
+                        help="Produce a comprehensive report including all function changes and analysis details.")
     parser.add_argument("--update-description", action="store_true",
                         help="Update the PR description with the DiffScribe summary instead of commenting.")
     parser.add_argument("--verbose", action="store_true",
@@ -144,9 +146,14 @@ def main(argv: list[str] | None = None) -> int:
                     "Failed to commit living documentation changes: %s", exc)
 
     formatter = CommentFormatter()
+    include_all = (
+        args.include_all_functions
+        or args.full_report
+        or args.update_description
+    )
     rendered_body = formatter.render(
         analysis_output,
-        include_all_functions=args.include_all_functions or args.update_description,
+        include_all_functions=include_all,
     )
 
     if args.update_description:

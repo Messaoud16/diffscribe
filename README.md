@@ -4,7 +4,7 @@ DiffScribe is an AI-assisted pull request reviewer that summarizes intent, highl
 
 ### Features
 - GitHub Action triggered on PR open/update.
-- Diff parsing for Python and JavaScript with function-level summaries.
+- Diff parsing for Python, JavaScript, and TypeScript with function-level summaries and rename detection.
 - Heuristic risk analysis for high-impact files, missing tests, and deprecated APIs.
 - OpenAI-powered summaries with behavior changes, risks, and suggested actions.
 - PR comment upsert to keep reviewers in sync.
@@ -22,7 +22,11 @@ DiffScribe is an AI-assisted pull request reviewer that summarizes intent, highl
    ```
 3. Execute the workflow script against a GitHub event payload:
    ```bash
-   python -m diffscribe.cli --event-path path/to/event.json --output artifacts/pr_snapshot.json --skip-comment
+   python -m diffscribe.cli \
+     --event-path path/to/event.json \
+     --output artifacts/pr_snapshot.json \
+     --skip-comment \
+     --full-report
    ```
 
 ### GitHub Action Setup
@@ -56,12 +60,12 @@ pytest
      env:
        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-     run: python -m diffscribe.cli --event-path "$GITHUB_EVENT_PATH" --update-description
+     run: python -m diffscribe.cli --event-path "$GITHUB_EVENT_PATH" --update-description --full-report
    ```
 3. Optionally expose the CLI locally:
    ```bash
    pip install git+https://github.com/your-org/diffscribe.git@v0.1.0
-   diffscribe --event-path path/to/event.json --output artifacts/pr_snapshot.json
+   diffscribe --event-path path/to/event.json --output artifacts/pr_snapshot.json --full-report
    ```
 
 ### Roadmap Ideas

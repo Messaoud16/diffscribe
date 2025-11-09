@@ -3,7 +3,7 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import List
 
-from .models import AnalysisOutput, AISummary, RiskAssessment
+from .models import AnalysisOutput, AISummary, RiskAssessment, FunctionChange
 
 COMMENT_MARKER = "<!-- DiffScribe -->"
 
@@ -20,35 +20,23 @@ class CommentFormatter:
         lines.append("")
         lines.append(summary_text.strip())
 
+        behavior_items: List[str] = []
         if ai_summary and ai_summary.behavior_changes:
-            lines.append("")
-            lines.append("**Behavior Changes**")
-            for item in ai_summary.behavior_changes:
-                lines.append(f"- {item}")
-
-        function_items: List[str] = []
+            for change in ai_summary.behavior_changes:
+                bullet = f"- {change}"
+                if bullet not in behavior_items:
+                    behavior_items.append(bullet)
         for file_diff in analysis.parsed_diff.files:
             for change in file_diff.function_changes:
-                change_name = (
-                    "module-level logic" if change.name == "<module>" else change.name
-                )
-                if change.previous_name and change.previous_name != change.name:
-                    change_details = f"{change.change_type} ({change.previous_name} -> {change.name})"
-                else:
-                    change_details = f"{change.change_type}"
-                if change.lines_added or change.lines_removed:
-                    change_details += f" (+{change.lines_added}/-{change.lines_removed})"
-                function_items.append(
-                    f"- `{file_diff.filename}` · `{change_name}` · {change_details}"
-                )
-
-        if include_all_functions or function_items:
+                formatted = self._format_function_behavior(
+                    file_diff.filename, change)
+                if include_all_functions or formatted not in behavior_items:
+                    behavior_items.append(formatted)
+        if behavior_items:
             lines.append("")
-            lines.append("**Function Changes**")
-            if function_items:
-                lines.extend(function_items)
-            else:
-                lines.append("- Detected no function-level changes.")
+            lines.append("**Modified Methods / Classes**")
+            for item in behavior_items:
+                lines.append(item)
 
         risk_items = []
         if ai_summary and ai_summary.risks:
@@ -56,9 +44,10 @@ class CommentFormatter:
         if risk_assessment:
             if risk_assessment.high_risk_files:
                 joined = ", ".join(risk_assessment.high_risk_files)
-                risk_items.append(f"High-risk files touched: {joined}")
+                risk_items.append(f"High-risk files modified: {joined}")
             if risk_assessment.missing_tests:
-                risk_items.append("Missing related tests for code changes.")
+                risk_items.append(
+                    "Missing related tests covering modified code.")
             if risk_assessment.deprecated_apis:
                 risk_items.extend(
                     f"Deprecated API usage: {item}" for item in risk_assessment.deprecated_apis)
@@ -67,15 +56,52 @@ class CommentFormatter:
 
         if risk_items:
             lines.append("")
-            lines.append("**Risks & Flags**")
+            lines.append("**Risks & Potential Issues**")
             for item in risk_items:
                 lines.append(f"- {item}")
 
+        suggested_actions: List[str] = []
         if ai_summary and ai_summary.suggested_actions:
+            filtered = [
+                action.strip()
+                for action in ai_summary.suggested_actions
+                if action
+                and action.strip().lower()
+                not in {
+                    "check for any potential security vulnerabilities introduced by new changes",
+                    "verify that all modified functions maintain expected behavior",
+                    "review the new server functionality and ensure it meets requirements",
+                }
+            ]
+            suggested_actions.extend(filtered)
+
+        if risk_assessment and risk_assessment.missing_tests:
+            if not any("unit test" in action.lower() for action in suggested_actions):
+                suggested_actions.append(
+                    "Add unit tests covering the modified functions.")
+
+        if suggested_actions:
             lines.append("")
             lines.append("**Suggested Actions**")
-            for item in ai_summary.suggested_actions:
+            for item in suggested_actions:
                 lines.append(f"- {item}")
 
         body = "\n".join(lines).strip()
         return dedent(body).strip()
+
+    def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
+        function_name = "module-level logic" if change.name == "<module>" else change.name
+        if change.change_type == "renamed" and getattr(change, "previous_name", None):
+            detail = f"Renamed `{change.previous_name}` to `{function_name}` in `{filename}`"
+        else:
+            detail = f"{change.change_type.title()} `{function_name}` in `{filename}`"
+
+        line_delta = ""
+        if change.lines_added or change.lines_removed:
+            line_delta = f" (+{change.lines_added}/-{change.lines_removed} lines)"
+
+        summary = change.summary or ""
+        summary = summary.replace("()", "")
+        summary_detail = f" — {summary}" if summary else ""
+
+        return f"- `{filename}` · {detail}{line_delta}{summary_detail}"

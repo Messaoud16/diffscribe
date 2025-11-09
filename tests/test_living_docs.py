@@ -4,6 +4,7 @@ from diffscribe.living_docs import LivingDocsGenerator
 from diffscribe.models import (
     AISummary,
     AnalysisOutput,
+    FunctionChange,
     ParsedDiff,
     ParsedFileDiff,
     PullRequestInfo,
@@ -40,7 +41,15 @@ def test_living_doc_generation(tmp_path: Path):
                 additions=3,
                 deletions=1,
                 summary="Detected 1 modified function-level changes.",
-                function_changes=[],
+                function_changes=[
+                    FunctionChange(
+                        name="helper",
+                        change_type="modified",
+                        lines_added=3,
+                        lines_removed=1,
+                        summary="Modified helper (+3 / -1 lines)",
+                    )
+                ],
             )
         ],
     )
@@ -59,4 +68,5 @@ def test_living_doc_generation(tmp_path: Path):
     content = doc_path.read_text(encoding="utf-8")
     assert "Summary text." in content
     assert "Behavior change" in content
+    assert "- `src/file.py` · Modified `helper` in `src/file.py` (+3/-1 lines) — Modified helper (+3 / -1 lines)" in content
 
