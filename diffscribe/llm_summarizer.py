@@ -26,7 +26,12 @@ class LLMSummarizer:
             logger.warning(
                 "OPENAI_API_KEY not provided; summarizer will return fallback content.")
 
-    def summarize(self, parsed_diff: ParsedDiff, risk_assessment: RiskAssessment | None = None) -> AISummary:
+    def summarize(
+        self,
+        parsed_diff: ParsedDiff,
+        risk_assessment: RiskAssessment | None = None,
+        mode: str = "concise",
+    ) -> AISummary:
         if not self._client:
             return AISummary(
                 summary="AI summarization unavailable because OPENAI_API_KEY is not configured.",
@@ -38,18 +43,19 @@ class LLMSummarizer:
             )
 
         prompt_payload = self._build_prompt_payload(
-            parsed_diff, risk_assessment)
+            parsed_diff, risk_assessment, mode)
         system_prompt = (
-            "You are DiffScribe, an assistant that creates concise, reviewer-focused pull request summaries. "
-            "Given structured PR data, respond with a JSON object containing keys: "
-            "`summary` (one short paragraph describing the PR intent), "
-            "`behavior_changes` (array of at most three bullet-ready strings describing high-level, user- or feature-facing behavior changes. "
-            "Group related helper/function edits into one statement and avoid listing every internal function by name), "
-            "`risks` (array highlighting concrete concerns such as unused variables, potential infinite loops, shared module impacts, or security-sensitive changes), "
-            "and `suggested_actions` (array of specific follow-up steps like adding tests or removing dead code). "
-            "Ignore formatting-only edits, module-level tweaks without behavioral impact, and helper functions that introduce no new risk. "
-            "Keep every item plain-English and actionable. "
-            "Do not add extra keys."
+            "You are an expert software engineer and technical writer summarizing pull requests for reviewers.\n"
+            "Always respond with a compact JSON object containing exactly the keys `summary`, `changes`, `risks`, and `suggested_actions`.\n"
+            "`summary` must be a short paragraph (plain text) describing the PR goal and intent.\n"
+            "`changes` must be an array (max three items in concise mode) of brief, plain-English bullet strings describing the major behavioral changes. "
+            "Group related helper edits into one line and avoid file paths.\n"
+            "`risks` must be an array enumerating concrete risks or points of attention (unused variables, missing tests, shared modules, security-impacting code, etc.).\n"
+            "`suggested_actions` must be an array of reviewer/tester follow-ups. "
+            "Leave an array empty if there is nothing meaningful to say.\n"
+            "For `mode=\"concise\"`, keep the entire JSON content under roughly 150 words. "
+            "For `mode=\"detailed\"`, you may use longer text and include more bullet items (grouped by feature or subsystem) but still keep the response structured and reviewer-friendly.\n"
+            "Never mention implementation details that are not in the payload, never include markdown formatting inside the JSON, and never add additional keys."
         )
         user_prompt = json.dumps(prompt_payload, indent=2)
 
@@ -99,10 +105,13 @@ class LLMSummarizer:
                 raw_response=message,
             )
 
+        changes = parsed.get("changes")
+        if changes is None:
+            changes = parsed.get("behavior_changes", [])
         return AISummary(
             summary=parsed.get("summary", "").strip(),
-            behavior_changes=[item.strip() for item in parsed.get(
-                "behavior_changes", []) if isinstance(item, str)],
+            behavior_changes=[item.strip()
+                              for item in changes if isinstance(item, str)],
             risks=[item.strip() for item in parsed.get(
                 "risks", []) if isinstance(item, str)],
             suggested_actions=[item.strip() for item in parsed.get(
@@ -111,7 +120,12 @@ class LLMSummarizer:
             raw_response=message,
         )
 
-    def _build_prompt_payload(self, parsed_diff: ParsedDiff, risk_assessment: RiskAssessment | None) -> dict:
+    def _build_prompt_payload(
+        self,
+        parsed_diff: ParsedDiff,
+        risk_assessment: RiskAssessment | None,
+        mode: str,
+    ) -> dict:
         pr_info = parsed_diff.pull_request.to_dict()
         pr_summary = {
             "number": pr_info["number"],
@@ -152,6 +166,7 @@ class LLMSummarizer:
         payload = {
             "pull_request": pr_summary,
             "files": files_summary,
+            "summary_mode": mode,
         }
         if risk_assessment:
             payload["precomputed_risks"] = risk_assessment.to_dict()

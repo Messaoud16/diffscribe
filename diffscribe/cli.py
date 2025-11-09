@@ -68,12 +68,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Directory for living documentation output.")
     parser.add_argument("--commit-docs", action="store_true",
                         help="Commit living documentation changes after generation.")
-    parser.add_argument("--include-all-functions", action="store_true",
-                        help="Explicitly list every detected function change in the summary output.")
-    parser.add_argument("--full-report", action="store_true",
-                        help="Produce a comprehensive report including all function changes and analysis details.")
     parser.add_argument("--update-description", action="store_true",
                         help="Update the PR description with the DiffScribe summary instead of commenting.")
+    parser.add_argument("--summary-mode", choices=["concise", "detailed"], default=os.getenv(
+        "DIFFSCRIBE_SUMMARY_MODE", "concise"), help="Choose summary mode: concise (default) or detailed.")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable debug logging.")
     return parser.parse_args(argv)
@@ -122,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summarizer = LLMSummarizer()
     ai_summary = summarizer.summarize(
-        parsed_diff, risk_assessment=risk_assessment)
+        parsed_diff, risk_assessment=risk_assessment, mode=args.summary_mode)
     analysis_output = AnalysisOutput(
         parsed_diff=parsed_diff, ai_summary=ai_summary, risk_assessment=risk_assessment)
 
@@ -146,14 +144,9 @@ def main(argv: list[str] | None = None) -> int:
                     "Failed to commit living documentation changes: %s", exc)
 
     formatter = CommentFormatter()
-    include_all = (
-        args.include_all_functions
-        or args.full_report
-        or args.update_description
-    )
     rendered_body = formatter.render(
         analysis_output,
-        include_all_functions=include_all,
+        include_function_changes=args.summary_mode == "detailed",
     )
 
     if args.update_description:

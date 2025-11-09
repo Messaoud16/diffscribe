@@ -67,7 +67,7 @@ def test_living_doc_generation(tmp_path: Path):
     assert doc_path.exists()
     content = doc_path.read_text(encoding="utf-8")
     assert "Summary text." in content
-    assert "Diffscribe PR Assistant" in content
-    assert "🧩 Purpose" in content
+    assert "### 🤖 Diffscribe Summary" in content
+    assert "**🎯 Goal**" in content
     assert "- Behavior change" in content
 
