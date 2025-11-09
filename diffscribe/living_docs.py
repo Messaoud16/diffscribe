@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Set
 
 from .models import AnalysisOutput, PullRequestInfo, FunctionChange
 
@@ -25,7 +25,9 @@ class LivingDocsGenerator:
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
         lines = [
-            f"# PR #{pr_info.number}: {pr_info.title}",
+            "# Diffscribe PR Assistant",
+            "────────────────────────────",
+            f"PR #{pr_info.number} — {pr_info.title}",
             "",
             f"- Author: {pr_info.author}",
             f"- Base → Head: {pr_info.base_branch} ← {pr_info.head_branch}",
@@ -34,54 +36,93 @@ class LivingDocsGenerator:
             "",
         ]
 
-        if ai_summary and ai_summary.summary:
-            lines.append("## Summary")
-            lines.append("")
-            lines.append(ai_summary.summary.strip())
-            lines.append("")
+        purpose = ai_summary.summary.strip(
+        ) if ai_summary and ai_summary.summary else pr_info.body or "Purpose unavailable."
+        lines.append("## 🧩 Purpose")
+        lines.append("")
+        lines.append(purpose.strip())
+        lines.append("")
 
-        behavior_items = []
-        if ai_summary and ai_summary.behavior_changes:
-            for change in ai_summary.behavior_changes:
-                text = change.strip()
-                if text and text not in behavior_items:
-                    behavior_items.append(text)
-        fallback_items = []
-        for file in analysis.parsed_diff.files:
-            for change in file.function_changes:
-                formatted = self._format_function_behavior(
-                    file.filename, change)
-                if formatted not in fallback_items:
-                    fallback_items.append(formatted)
-        if not behavior_items:
-            behavior_items.extend(fallback_items)
-        if behavior_items:
-            lines.append("## Behavior Changes")
-            lines.append("")
-            for item in behavior_items:
-                bullet = item.strip()
-                if not bullet:
-                    continue
-                if not bullet.startswith("-"):
-                    bullet = f"- {bullet}"
-                lines.append(bullet)
-            lines.append("")
+        lines.extend(
+            self._build_section(
+                "⚙️ Changes",
+                ai_summary.behavior_changes if ai_summary else None,
+                analysis,
+                include_fallback=True,
+            )
+        )
+        lines.extend(self._build_section(
+            "⚠️ Risks", self._collect_risks(analysis), analysis))
+        lines.extend(
+            self._build_section("✅ Suggested Actions",
+                                self._collect_actions(analysis), analysis)
+        )
 
-        if risk and (risk.high_risk_files or risk.missing_tests or risk.deprecated_apis or risk.notes):
-            lines.append("## Risks & Potential Issues")
-            lines.append("")
-            if risk.high_risk_files:
-                lines.append(
-                    f"- High-risk files modified: {', '.join(risk.high_risk_files)}")
-            if risk.missing_tests:
-                lines.append("- Missing related tests covering modified code.")
-            for item in risk.deprecated_apis:
-                lines.append(f"- Deprecated API: {item}")
-            for note in risk.notes:
-                lines.append(f"- {note}")
-            lines.append("")
+        return "\n".join(lines).strip() + "\n"
 
-        suggested_actions = []
+    def _build_section(
+        self,
+        title: str,
+        ai_items: Optional[List[str]],
+        analysis: AnalysisOutput,
+        include_fallback: bool = False,
+    ) -> List[str]:
+        items: List[str] = []
+        seen: Set[str] = set()
+
+        if ai_items:
+            for item in ai_items:
+                text = item.strip()
+                if text and text not in seen:
+                    items.append(text)
+                    seen.add(text)
+
+        if include_fallback and not items:
+            fallback = []
+            for file in analysis.parsed_diff.files:
+                for change in file.function_changes:
+                    formatted = self._format_function_behavior(
+                        file.filename, change)
+                    if formatted not in fallback:
+                        fallback.append(formatted)
+            items.extend(fallback)
+
+        cleaned = [item.strip() for item in items if item.strip()]
+        if not cleaned:
+            return []
+        section_lines = [f"## {title}", ""]
+        section_lines.extend(f"- {item}" for item in cleaned)
+        section_lines.append("")
+        return section_lines
+
+    def _collect_risks(self, analysis: AnalysisOutput) -> List[str]:
+        risks: List[str] = []
+        ai_summary = analysis.ai_summary
+        risk_assessment = analysis.risk_assessment
+
+        if ai_summary and ai_summary.risks:
+            for risk in ai_summary.risks:
+                text = risk.strip()
+                if text:
+                    risks.append(text)
+
+        if risk_assessment:
+            if risk_assessment.high_risk_files:
+                risks.append(
+                    f"High-risk files modified: {', '.join(risk_assessment.high_risk_files)}")
+            if risk_assessment.missing_tests:
+                risks.append("Missing related tests covering modified code.")
+            for api in risk_assessment.deprecated_apis:
+                risks.append(f"Deprecated API usage: {api}")
+            for note in risk_assessment.notes:
+                risks.append(note)
+        return risks
+
+    def _collect_actions(self, analysis: AnalysisOutput) -> List[str]:
+        actions: List[str] = []
+        ai_summary = analysis.ai_summary
+        risk_assessment = analysis.risk_assessment
+
         if ai_summary and ai_summary.suggested_actions:
             filtered = [
                 action.strip()
@@ -94,42 +135,29 @@ class LivingDocsGenerator:
                     "review the new server functionality and ensure it meets requirements",
                 }
             ]
-            suggested_actions.extend(filtered)
+            actions.extend(filtered)
 
-        if risk:
-            if risk.missing_tests and not any("unit test" in action.lower() for action in suggested_actions):
-                suggested_actions.append(
+        if risk_assessment:
+            if risk_assessment.missing_tests and not any("unit test" in action.lower() for action in actions):
+                actions.append(
                     "Add unit tests covering the modified functions.")
-            if risk.deprecated_apis and not any("deprecated" in action.lower() for action in suggested_actions):
-                suggested_actions.append(
+            if risk_assessment.deprecated_apis and not any("deprecated" in action.lower() for action in actions):
+                actions.append(
                     "Replace or refactor deprecated API usage highlighted above.")
-            if risk.high_risk_files and not any("review" in action.lower() for action in suggested_actions):
-                suggested_actions.append(
+            if risk_assessment.high_risk_files and not any("review" in action.lower() for action in actions):
+                actions.append(
                     "Perform a focused review of the high-risk modules that changed.")
 
-        if suggested_actions:
-            lines.append("## Suggested Actions")
-            lines.append("")
-            for item in suggested_actions:
-                lines.append(f"- {item}")
-            lines.append("")
+        docs = []
+        if ai_summary and ai_summary.suggested_actions:
+            for action in ai_summary.suggested_actions:
+                text = action.strip()
+                if text.lower().startswith("docs:"):
+                    docs.append(text.split(":", 1)[1].strip())
+        if docs:
+            actions.extend(docs)
 
-        if analysis.parsed_diff.files:
-            lines.append("## Changed Files")
-            lines.append("")
-            for file in analysis.parsed_diff.files:
-                lines.append(f"### {file.filename}")
-                if file.summary:
-                    lines.append(file.summary)
-                if file.function_changes:
-                    lines.append("")
-                    lines.append("Function-level changes:")
-                    for change in file.function_changes:
-                        lines.append(
-                            f"- {self._format_function_behavior(file.filename, change)}")
-                lines.append("")
-
-        return "\n".join(lines).strip() + "\n"
+        return actions
 
     def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
         function_name = "module-level logic" if change.name == "<module>" else change.name

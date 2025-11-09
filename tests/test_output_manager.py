@@ -63,12 +63,16 @@ def test_comment_formatter_includes_sections():
     formatter = CommentFormatter()
     body = formatter.render(AnalysisOutput(parsed_diff=parsed, ai_summary=ai_summary, risk_assessment=risks))
 
-    assert "DiffScribe Summary" in body
-    assert "Behavior Changes" in body
+    assert "Diffscribe PR Assistant" in body
+    assert "🧩 Purpose" in body
+    assert "- Updates app logic." in body
+    assert "⚙️ Changes" in body
     assert "- App returns JSON." in body
-    assert "Risks & Potential Issues" in body
-    assert "High-risk files modified: core/app.py" in body
-    assert "Suggested Actions" in body
+    assert "⚠️ Risks" in body
+    assert "- Needs extra tests." in body
+    assert "- High-risk files modified: core/app.py" in body
+    assert "- Missing related tests covering modified code." in body
+    assert "✅ Suggested Actions" in body
     assert "- Add integration test." in body
     assert "- Add unit tests covering the modified functions." in body
     assert "- Perform a focused review of the high-risk modules that changed." in body
