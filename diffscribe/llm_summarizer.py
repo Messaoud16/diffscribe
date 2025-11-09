@@ -43,12 +43,12 @@ class LLMSummarizer:
             "You are DiffScribe, an assistant that creates concise, reviewer-focused pull request summaries. "
             "Given structured PR data, respond with a JSON object containing keys: "
             "`summary` (one short paragraph describing the PR intent), "
-            "`behavior_changes` (array of bullet-ready strings, one per meaningful function/class change in the format "
-            "`FunctionName()` or `ClassName.method()` followed by an em dash and a short plain-English description of what changed/why), "
+            "`behavior_changes` (array of at most three bullet-ready strings describing high-level, user- or feature-facing behavior changes. "
+            "Group related helper/function edits into one statement and avoid listing every internal function by name), "
             "`risks` (array highlighting concrete concerns such as unused variables, potential infinite loops, shared module impacts, or security-sensitive changes), "
             "and `suggested_actions` (array of specific follow-up steps like adding tests or removing dead code). "
             "Ignore formatting-only edits, module-level tweaks without behavioral impact, and helper functions that introduce no new risk. "
-            "Keep every item plain-English, actionable, and tied to the function/module name. "
+            "Keep every item plain-English and actionable. "
             "Do not add extra keys."
         )
         user_prompt = json.dumps(prompt_payload, indent=2)
