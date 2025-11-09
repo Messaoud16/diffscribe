@@ -51,7 +51,8 @@ class LivingDocsGenerator:
             lines.append("## Risks & Flags")
             lines.append("")
             if risk.high_risk_files:
-                lines.append(f"- High-risk files: {', '.join(risk.high_risk_files)}")
+                lines.append(
+                    f"- High-risk files: {', '.join(risk.high_risk_files)}")
             if risk.missing_tests:
                 lines.append("- Missing related tests for code changes.")
             for item in risk.deprecated_apis:
@@ -81,9 +82,6 @@ class LivingDocsGenerator:
                         lines.append(f"- {change.summary}")
                 lines.append("")
 
-        if ai_summary and ai_summary.model:
-            lines.append(f"_Generated with {ai_summary.model}_")
-
         return "\n".join(lines).strip() + "\n"
 
 
@@ -93,8 +91,10 @@ def commit_living_doc(
     author_name: str = "github-actions[bot]",
     author_email: str = "41898282+github-actions[bot]@users.noreply.github.com",
 ) -> None:
-    subprocess.run(["git", "config", "--global", "user.name", author_name], check=False)
-    subprocess.run(["git", "config", "--global", "user.email", author_email], check=False)
+    subprocess.run(["git", "config", "--global",
+                   "user.name", author_name], check=False)
+    subprocess.run(["git", "config", "--global",
+                   "user.email", author_email], check=False)
     subprocess.run(["git", "add", str(path)], check=False)
     result = subprocess.run(
         ["git", "commit", "-m", f"docs: update PR {pr_number} summary"],
@@ -103,5 +103,5 @@ def commit_living_doc(
         text=True,
     )
     if result.returncode != 0 and "nothing to commit" not in (result.stderr or "").lower():
-        raise subprocess.CalledProcessError(result.returncode, result.args, output=result.stdout, stderr=result.stderr)
-
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, output=result.stdout, stderr=result.stderr)

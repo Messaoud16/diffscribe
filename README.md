@@ -56,7 +56,7 @@ pytest
      env:
        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-     run: python -m diffscribe.cli --event-path "$GITHUB_EVENT_PATH"
+     run: python -m diffscribe.cli --event-path "$GITHUB_EVENT_PATH" --update-description
    ```
 3. Optionally expose the CLI locally:
    ```bash

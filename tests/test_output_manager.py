@@ -58,5 +58,4 @@ def test_comment_formatter_includes_sections():
     assert "Behavior Changes" in body
     assert "Risks & Flags" in body
     assert "Suggested Actions" in body
-    assert "gpt-4o-mini" in body
 

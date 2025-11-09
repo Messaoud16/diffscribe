@@ -53,9 +53,5 @@ class CommentFormatter:
             for item in ai_summary.suggested_actions:
                 lines.append(f"- {item}")
 
-        if ai_summary and ai_summary.model:
-            lines.append("")
-            lines.append(f"_Generated with {ai_summary.model}_")
-
         body = "\n".join(lines).strip()
         return dedent(body).strip()
