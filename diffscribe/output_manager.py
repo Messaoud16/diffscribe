@@ -1,54 +1,42 @@
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import List, Set
+from typing import List
 
-from .models import AnalysisOutput, AISummary, RiskAssessment, FunctionChange
+from .models import AnalysisOutput, FunctionChange
 
 COMMENT_MARKER = "<!-- DiffScribe -->"
 
 
 class CommentFormatter:
-    def render(self, analysis: AnalysisOutput, include_all_functions: bool = False) -> str:
-        sections: List[str] = []
+    def render(
+        self,
+        analysis: AnalysisOutput,
+        include_function_changes: bool = False,
+    ) -> str:
         pr = analysis.parsed_diff.pull_request
+        header = f'### 🤖 Diffscribe Summary — PR #{pr.number} "{pr.title or "Untitled"}"\n'
+        sections: List[str] = [header]
 
-        header = [
-            "Diffscribe PR Assistant",
-            "────────────────────────────",
-            f"PR #{pr.number} — {pr.title or 'Untitled'}",
-            "",
-        ]
-        sections.append("\n".join(header))
+        sections.extend(self._format_goal(self._extract_goal(analysis)))
 
-        purpose = self._determine_purpose(analysis)
-        sections.append(self._build_section("🧩 Purpose", [purpose]))
-
-        changes = self._collect_changes(analysis, include_all_functions)
+        changes = self._extract_changes(analysis, include_function_changes)
         if changes:
-            sections.append(self._build_section("⚙️ Changes", changes))
+            sections.extend(self._format_section("🧩 What Changed", changes))
 
-        risks = self._collect_risks(analysis)
+        risks = self._extract_risks(analysis)
         if risks:
-            sections.append(self._build_section("⚠️ Risks", risks))
+            sections.extend(self._format_section("⚠️ Risks", risks))
 
-        actions = self._collect_actions(analysis)
+        actions = self._extract_actions(analysis)
         if actions:
-            sections.append(self._build_section(
-                "✅ Suggested Actions", actions))
+            sections.extend(self._format_section(
+                "🧪 Suggested Actions", actions))
 
-        docs = self._collect_docs(analysis)
-        if docs:
-            sections.append(self._build_section("📂 Docs Updated", docs))
-
-        reviewers = self._collect_reviewers(analysis)
-        if reviewers:
-            sections.append(self._build_section("🔗 Reviewers", reviewers))
-
-        body = "\n".join(section for section in sections if section)
+        body = "\n".join(part for part in sections if part)
         return dedent(body).strip()
 
-    def _determine_purpose(self, analysis: AnalysisOutput) -> str:
+    def _extract_goal(self, analysis: AnalysisOutput) -> str:
         if analysis.ai_summary and analysis.ai_summary.summary:
             return analysis.ai_summary.summary.strip()
         pr = analysis.parsed_diff.pull_request
@@ -56,107 +44,92 @@ class CommentFormatter:
             return pr.body.strip().splitlines()[0]
         return "Purpose unavailable."
 
-    def _build_section(self, title: str, items: List[str]) -> str:
-        cleaned = [item.strip() for item in items if item and item.strip()]
-        if not cleaned:
-            return ""
-        bullet_lines = "\n".join(f"- {item}" for item in cleaned)
-        return f"{title}\n\n{bullet_lines}\n"
-
-    def _collect_changes(self, analysis: AnalysisOutput, include_all_functions: bool) -> List[str]:
-        seen: Set[str] = set()
+    def _extract_changes(
+        self,
+        analysis: AnalysisOutput,
+        include_fallback: bool,
+    ) -> List[str]:
         changes: List[str] = []
-        ai_summary = analysis.ai_summary
-
-        if ai_summary and ai_summary.behavior_changes:
-            for change in ai_summary.behavior_changes:
-                text = change.strip()
-                if text and text not in seen:
-                    changes.append(text)
-                    seen.add(text)
-
+        if analysis.ai_summary and analysis.ai_summary.behavior_changes:
+            changes.extend(
+                item.strip()
+                for item in analysis.ai_summary.behavior_changes
+                if item and item.strip()
+            )
+        if include_fallback and not changes:
+            for file_diff in analysis.parsed_diff.files:
+                for change in file_diff.function_changes:
+                    changes.append(self._format_function_behavior(
+                        file_diff.filename, change))
         return changes
 
-    def _collect_risks(self, analysis: AnalysisOutput) -> List[str]:
+    def _extract_risks(self, analysis: AnalysisOutput) -> List[str]:
         risks: List[str] = []
-        ai_summary = analysis.ai_summary
+        if analysis.ai_summary and analysis.ai_summary.risks:
+            risks.extend(
+                item.strip() for item in analysis.ai_summary.risks if item and item.strip()
+            )
+
         risk_assessment = analysis.risk_assessment
-
-        if ai_summary and ai_summary.risks:
-            for item in ai_summary.risks:
-                text = item.strip()
-                if text:
-                    risks.append(text)
-
         if risk_assessment:
             if risk_assessment.high_risk_files:
                 risks.append(
-                    f"High-risk files modified: {', '.join(risk_assessment.high_risk_files)}")
+                    f"High-risk files modified: {', '.join(risk_assessment.high_risk_files)}"
+                )
             if risk_assessment.missing_tests:
                 risks.append("Missing related tests covering modified code.")
             for api in risk_assessment.deprecated_apis:
                 risks.append(f"Deprecated API usage: {api}")
             for note in risk_assessment.notes:
                 risks.append(note)
-
         return risks
 
-    def _collect_docs(self, analysis: AnalysisOutput) -> List[str]:
-        docs: List[str] = []
-        for file_diff in analysis.parsed_diff.files:
-            if file_diff.filename.startswith("docs/"):
-                docs.append(file_diff.filename)
-
-        ai_summary = analysis.ai_summary
-        if ai_summary and ai_summary.suggested_actions:
-            for action in ai_summary.suggested_actions:
-                text = action.strip()
-                if text.lower().startswith("docs:"):
-                    docs.append(text.split(":", 1)[1].strip())
-        return docs
-
-    def _collect_actions(self, analysis: AnalysisOutput) -> List[str]:
+    def _extract_actions(self, analysis: AnalysisOutput) -> List[str]:
         actions: List[str] = []
-        ai_summary = analysis.ai_summary
+        if analysis.ai_summary and analysis.ai_summary.suggested_actions:
+            actions.extend(
+                item.strip()
+                for item in analysis.ai_summary.suggested_actions
+                if item and item.strip()
+            )
+
         risk_assessment = analysis.risk_assessment
-
-        if ai_summary and ai_summary.suggested_actions:
-            filtered = [
-                action.strip()
-                for action in ai_summary.suggested_actions
-                if action
-                and action.strip().lower()
-                not in {
-                    "check for any potential security vulnerabilities introduced by new changes",
-                    "verify that all modified functions maintain expected behavior",
-                    "review the new server functionality and ensure it meets requirements",
-                }
-            ]
-            actions.extend(filtered)
-
         if risk_assessment:
-            if risk_assessment.missing_tests and not any("unit test" in action.lower() for action in actions):
+            if risk_assessment.missing_tests and not any(
+                "unit test" in action.lower() for action in actions
+            ):
                 actions.append(
                     "Add unit tests covering the modified functions.")
-            if risk_assessment.deprecated_apis and not any("deprecated" in action.lower() for action in actions):
+            if risk_assessment.deprecated_apis and not any(
+                "deprecated" in action.lower() for action in actions
+            ):
                 actions.append(
                     "Replace or refactor deprecated API usage highlighted above.")
-            if risk_assessment.high_risk_files and not any("review" in action.lower() for action in actions):
+            if risk_assessment.high_risk_files and not any(
+                "review" in action.lower() for action in actions
+            ):
                 actions.append(
                     "Perform a focused review of the high-risk modules that changed.")
-
         return actions
 
-    def _collect_reviewers(self, analysis: AnalysisOutput) -> List[str]:
-        reviewers: List[str] = []
-        pr = analysis.parsed_diff.pull_request
-        teams = [label for label in pr.labels if label.endswith("-team")]
-        if teams:
-            reviewers.append(", ".join(f"@{team}" for team in teams))
-        return reviewers
+    def _format_goal(self, goal: str) -> List[str]:
+        return [
+            "**🎯 Goal**  ",
+            goal if goal else "Purpose unavailable.",
+            "",
+        ]
+
+    def _format_section(self, title: str, items: List[str]) -> List[str]:
+        cleaned = [item for item in items if item]
+        if not cleaned:
+            return []
+        lines = [f"**{title}**  "]
+        lines.extend(f"- {item}" for item in cleaned)
+        lines.append("")
+        return lines
 
     def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
-        name = "module-level logic" if change.name == "<module>" else change.name
+        function_name = "module-level logic" if change.name == "<module>" else change.name
         verb_map = {
             "added": "Added",
             "removed": "Removed",
@@ -165,8 +138,8 @@ class CommentFormatter:
         }
         verb = verb_map.get(change.change_type, "Updated")
 
-        if change.change_type == "renamed" and getattr(change, "previous_name", None):
-            return f"{name} — renamed from {change.previous_name}"
+        if change.change_type == "renamed" and change.previous_name:
+            return f"{function_name} — renamed from {change.previous_name}"
         if change.summary:
             return change.summary.replace("()", "").strip()
-        return f"{name} — {verb.lower()} in {filename}"
+        return f"{function_name} — {verb.lower()} in {filename}"
