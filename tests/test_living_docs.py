@@ -68,5 +68,5 @@ def test_living_doc_generation(tmp_path: Path):
     content = doc_path.read_text(encoding="utf-8")
     assert "Summary text." in content
     assert "Behavior change" in content
-    assert "- `src/file.py` · Modified `helper` in `src/file.py` (+3/-1 lines) — Modified helper (+3 / -1 lines)" in content
+    assert "- Behavior change" in content
 

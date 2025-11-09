@@ -23,20 +23,31 @@ class CommentFormatter:
         behavior_items: List[str] = []
         if ai_summary and ai_summary.behavior_changes:
             for change in ai_summary.behavior_changes:
-                bullet = f"- {change}"
-                if bullet not in behavior_items:
-                    behavior_items.append(bullet)
+                text = change.strip()
+                if not text:
+                    continue
+                if text not in behavior_items:
+                    behavior_items.append(text)
+        fallback_items: List[str] = []
         for file_diff in analysis.parsed_diff.files:
             for change in file_diff.function_changes:
                 formatted = self._format_function_behavior(
                     file_diff.filename, change)
-                if include_all_functions or formatted not in behavior_items:
-                    behavior_items.append(formatted)
+                if formatted not in fallback_items:
+                    fallback_items.append(formatted)
+
+        if include_all_functions or not behavior_items:
+            behavior_items.extend(fallback_items)
         if behavior_items:
             lines.append("")
-            lines.append("**Modified Methods / Classes**")
+            lines.append("**Behavior Changes**")
             for item in behavior_items:
-                lines.append(item)
+                bullet = item.strip()
+                if not bullet:
+                    continue
+                if not bullet.startswith("-"):
+                    bullet = f"- {bullet}"
+                lines.append(bullet)
 
         risk_items = []
         if ai_summary and ai_summary.risks:
@@ -106,17 +117,17 @@ class CommentFormatter:
 
     def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
         function_name = "module-level logic" if change.name == "<module>" else change.name
+        verb_map = {
+            "added": "Added",
+            "removed": "Removed",
+            "modified": "Updated",
+            "renamed": "Renamed",
+        }
+        verb = verb_map.get(change.change_type, "Updated")
+
         if change.change_type == "renamed" and getattr(change, "previous_name", None):
-            detail = f"Renamed `{change.previous_name}` to `{function_name}` in `{filename}`"
+            detail = f"{verb} `{change.previous_name}` to `{function_name}` in `{filename}`"
         else:
-            detail = f"{change.change_type.title()} `{function_name}` in `{filename}`"
+            detail = f"{verb} `{function_name}` in `{filename}`"
 
-        line_delta = ""
-        if change.lines_added or change.lines_removed:
-            line_delta = f" (+{change.lines_added}/-{change.lines_removed} lines)"
-
-        summary = change.summary or ""
-        summary = summary.replace("()", "")
-        summary_detail = f" — {summary}" if summary else ""
-
-        return f"- `{filename}` · {detail}{line_delta}{summary_detail}"
+        return detail
