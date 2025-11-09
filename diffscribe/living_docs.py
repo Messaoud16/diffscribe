@@ -88,10 +88,16 @@ class LivingDocsGenerator:
             ]
             suggested_actions.extend(filtered)
 
-        if risk and risk.missing_tests:
-            if not any("unit test" in action.lower() for action in suggested_actions):
+        if risk:
+            if risk.missing_tests and not any("unit test" in action.lower() for action in suggested_actions):
                 suggested_actions.append(
                     "Add unit tests covering the modified functions.")
+            if risk.deprecated_apis and not any("deprecated" in action.lower() for action in suggested_actions):
+                suggested_actions.append(
+                    "Replace or refactor deprecated API usage highlighted above.")
+            if risk.high_risk_files and not any("review" in action.lower() for action in suggested_actions):
+                suggested_actions.append(
+                    "Perform a focused review of the high-risk modules that changed.")
 
         if suggested_actions:
             lines.append("## Suggested Actions")

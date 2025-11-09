@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 
 MODULE_SCOPE = "<module>"
 
-PYTHON_DEF_PATTERN = re.compile(r"^\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
-PYTHON_CONTEXT_PATTERN = re.compile(r"(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+PYTHON_DEF_PATTERN = re.compile(
+    r"^\s*(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
+PYTHON_CONTEXT_PATTERN = re.compile(
+    r"(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)")
 
 JS_FUNCTION_PATTERN = re.compile(
     r"""
@@ -53,7 +55,8 @@ class DiffParser:
             language = language or "unknown"
 
         if not file.patch:
-            logger.warning("No patch available for %s; skipping diff parsing.", file.filename)
+            logger.warning(
+                "No patch available for %s; skipping diff parsing.", file.filename)
             return ParsedFileDiff(
                 filename=file.filename,
                 language=language,
@@ -94,6 +97,8 @@ class DiffParser:
 
             sign = line[0]
             content = line[1:]
+            if self._is_noise_line(content):
+                continue
 
             detected_scope = self._detect_definition_scope(content, language)
             if detected_scope:
@@ -109,7 +114,8 @@ class DiffParser:
                             renamed_pairs[detected_scope] = previous_name
                             if previous_name in function_stats:
                                 old_stats = function_stats.pop(previous_name)
-                                self._ensure_scope(function_stats, detected_scope)
+                                self._ensure_scope(
+                                    function_stats, detected_scope)
                                 new_stats = function_stats[detected_scope]
                                 new_stats["lines_removed"] += int(
                                     old_stats.get("lines_removed", 0)
@@ -134,10 +140,16 @@ class DiffParser:
                 previous_name=renamed_pairs.get(scope),
             )
             for scope, stats in function_stats.items()
+            if not self._is_noise_change(scope, stats)
         ]
+
+        function_changes = self._filter_module_scope(function_changes)
         summary = self._summarize_file(
             function_changes, language, file.status, file.previous_filename
         )
+
+        if not function_changes:
+            return None
 
         return ParsedFileDiff(
             filename=file.filename,
@@ -188,7 +200,7 @@ class DiffParser:
             ]
             for prefix in prefixes:
                 if normalized.startswith(prefix + " "):
-                    normalized = normalized[len(prefix) :].lstrip()
+                    normalized = normalized[len(prefix):].lstrip()
             match = JS_FUNCTION_PATTERN.match(normalized)
             if match:
                 for group in match.groups():
@@ -233,6 +245,16 @@ class DiffParser:
             previous_name=previous_name,
         )
 
+    def _filter_module_scope(self, changes: list[FunctionChange]) -> list[FunctionChange]:
+        if not changes:
+            return changes
+
+        non_module_changes = [
+            change for change in changes if change.name != MODULE_SCOPE]
+        if non_module_changes:
+            return non_module_changes
+        return changes
+
     def _summarize_scope(
         self,
         scope: str,
@@ -265,9 +287,12 @@ class DiffParser:
             return f"Updated {language} file without detectable function-level changes."
 
         added = sum(1 for fc in function_changes if fc.change_type == "added")
-        removed = sum(1 for fc in function_changes if fc.change_type == "removed")
-        modified = sum(1 for fc in function_changes if fc.change_type == "modified")
-        renamed = sum(1 for fc in function_changes if fc.change_type == "renamed")
+        removed = sum(
+            1 for fc in function_changes if fc.change_type == "removed")
+        modified = sum(
+            1 for fc in function_changes if fc.change_type == "modified")
+        renamed = sum(
+            1 for fc in function_changes if fc.change_type == "renamed")
 
         parts = []
         if added:
@@ -284,3 +309,24 @@ class DiffParser:
             return f"Renamed file from {previous_filename} and detected {detail} function-level changes."
 
         return f"Detected {detail} function-level changes."
+
+    def _is_noise_line(self, content: str) -> bool:
+        stripped = content.strip()
+        if not stripped:
+            return True
+
+        comment_prefixes = ("#", "//", "/*", "*", "--")
+        if stripped.startswith(comment_prefixes):
+            return True
+
+        punctuation_only = {"{", "}", "};", ")", "(", "[", "]", ";", ","}
+        if stripped in punctuation_only:
+            return True
+
+        return False
+
+    def _is_noise_change(self, scope: str, stats: Dict[str, int | bool]) -> bool:
+        if scope == MODULE_SCOPE and not (stats.get("definition_added") or stats.get("definition_removed")):
+            if int(stats.get("lines_added", 0)) + int(stats.get("lines_removed", 0)) <= 2:
+                return True
+        return False

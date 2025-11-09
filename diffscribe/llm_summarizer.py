@@ -40,14 +40,15 @@ class LLMSummarizer:
         prompt_payload = self._build_prompt_payload(
             parsed_diff, risk_assessment)
         system_prompt = (
-            "You are DiffScribe, an assistant that explains pull requests to reviewers. "
+            "You are DiffScribe, an assistant that creates concise, reviewer-focused pull request summaries. "
             "Given structured PR data, respond with a JSON object containing keys: "
-            "`summary` (concise paragraph), `behavior_changes` (array of bullet-ready strings), "
-            "`risks` (array spotlighting testing gaps, shared modules, security/privacy), "
-            "and `suggested_actions` (array of next steps or TODOs). "
-            "Mention every function present in the `function_changes` arrays for each file, "
-            "including internal or utility helpers, so reviewers can see the full surface area changed. "
-            "Keep items brief, actionable, and avoid repetition. Do not add extra keys."
+            "`summary` (one short paragraph describing the PR intent), "
+            "`behavior_changes` (array of bullet-ready strings, one per meaningful function/class change), "
+            "`risks` (array highlighting concrete concerns such as unused variables, potential infinite loops, shared module impacts, or security-sensitive changes), "
+            "and `suggested_actions` (array of specific follow-up steps like adding tests or removing dead code). "
+            "Ignore formatting-only edits, module-level tweaks without behavioral impact, and helper functions that introduce no new risk. "
+            "Keep every item plain-English, actionable, and tied to the function/module name. "
+            "Do not add extra keys."
         )
         user_prompt = json.dumps(prompt_payload, indent=2)
 

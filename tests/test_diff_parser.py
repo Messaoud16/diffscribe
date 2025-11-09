@@ -38,7 +38,8 @@ def test_python_parser_detects_added_function():
     assert len(parsed.files) == 1
     file_diff = parsed.files[0]
     assert file_diff.language == "python"
-    change = next(fc for fc in file_diff.function_changes if fc.name == "new_helper")
+    change = next(
+        fc for fc in file_diff.function_changes if fc.name == "new_helper")
     assert change.change_type == "added"
 
 
@@ -61,7 +62,8 @@ def test_python_parser_captures_update_pr_body_function():
     parsed = parser.parse_pull_request(build_pr(pr_file))
     file_diff = parsed.files[0]
     assert file_diff.language == "python"
-    assert any(change.name == "update_pr_body" for change in file_diff.function_changes)
+    assert any(change.name ==
+               "update_pr_body" for change in file_diff.function_changes)
 
 
 def test_python_parser_detects_renamed_function():
@@ -111,7 +113,8 @@ def test_js_parser_detects_modified_function():
     assert len(parsed.files) == 1
     file_diff = parsed.files[0]
     assert file_diff.language == "javascript"
-    assert any(change.change_type == "modified" for change in file_diff.function_changes)
+    assert any(change.change_type ==
+               "modified" for change in file_diff.function_changes)
 
 
 def test_typescript_parser_detects_added_function():
@@ -132,5 +135,41 @@ def test_typescript_parser_detects_added_function():
     parsed = parser.parse_pull_request(build_pr(pr_file))
     file_diff = parsed.files[0]
     assert file_diff.language == "typescript"
-    assert any(change.name == "newHelper" for change in file_diff.function_changes)
+    assert any(change.name ==
+               "newHelper" for change in file_diff.function_changes)
 
+
+def test_parser_ignores_comment_only_change():
+    patch = """@@
+-# existing comment
++# updated comment
+"""
+    pr_file = PullRequestFile(
+        filename="src/module.py",
+        status="modified",
+        additions=1,
+        deletions=1,
+        changes=2,
+        patch=patch,
+    )
+    parser = DiffParser()
+    parsed = parser.parse_pull_request(build_pr(pr_file))
+    assert parsed.files == []
+
+
+def test_parser_ignores_trivial_module_change():
+    patch = """@@
+-value = 1
++value = 2
+"""
+    pr_file = PullRequestFile(
+        filename="src/config.py",
+        status="modified",
+        additions=1,
+        deletions=1,
+        changes=2,
+        patch=patch,
+    )
+    parser = DiffParser()
+    parsed = parser.parse_pull_request(build_pr(pr_file))
+    assert parsed.files == []

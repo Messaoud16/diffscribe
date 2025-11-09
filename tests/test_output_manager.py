@@ -71,3 +71,4 @@ def test_comment_formatter_includes_sections():
     assert "Suggested Actions" in body
     assert "- Add integration test." in body
     assert "- Add unit tests covering the modified functions." in body
+    assert "- Perform a focused review of the high-risk modules that changed." in body

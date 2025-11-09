@@ -75,10 +75,25 @@ class CommentFormatter:
             ]
             suggested_actions.extend(filtered)
 
-        if risk_assessment and risk_assessment.missing_tests:
-            if not any("unit test" in action.lower() for action in suggested_actions):
+        if risk_assessment:
+            if risk_assessment.missing_tests and not any(
+                "unit test" in action.lower() for action in suggested_actions
+            ):
                 suggested_actions.append(
-                    "Add unit tests covering the modified functions.")
+                    "Add unit tests covering the modified functions."
+                )
+            if risk_assessment.deprecated_apis and not any(
+                "deprecated" in action.lower() for action in suggested_actions
+            ):
+                suggested_actions.append(
+                    "Replace or refactor deprecated API usage highlighted above."
+                )
+            if risk_assessment.high_risk_files and not any(
+                "review" in action.lower() for action in suggested_actions
+            ):
+                suggested_actions.append(
+                    "Perform a focused review of the high-risk modules that changed."
+                )
 
         if suggested_actions:
             lines.append("")
