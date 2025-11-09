@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+      - name: Build package
+        run: |
+          poetry install --only main
+          poetry build
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffscribe-dist
+          path: dist/*
+      - name: Publish to PyPI
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$PYPI_TOKEN" ]; then
+            echo "PYPI token not set; skipping publish."
+            exit 0
+          fi
+          poetry publish --skip-existing --build --username "__token__" --password "$PYPI_TOKEN"
+

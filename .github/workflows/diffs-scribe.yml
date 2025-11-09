@@ -1,0 +1,49 @@
+name: DiffScribe PR Intelligence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+jobs:
+  analyze-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run DiffScribe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ENABLE_LIVING_DOCS: ${{ vars.DIFFSCRIBE_ENABLE_LIVING_DOCS || 'false' }}
+          COMMIT_LIVING_DOCS: ${{ vars.DIFFSCRIBE_COMMIT_LIVING_DOCS || 'false' }}
+        run: |
+          python -m diffscribe.cli --event-path "$GITHUB_EVENT_PATH" --output "artifacts/pr_snapshot.json"
+
+      - name: Upload PR snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffscribe-pr-snapshot
+          path: artifacts/pr_snapshot.json
+
+      - name: Push living docs
+        if: ${{ vars.DIFFSCRIBE_COMMIT_LIVING_DOCS == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git status
+          git push
+
