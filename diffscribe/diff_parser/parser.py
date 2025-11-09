@@ -44,6 +44,10 @@ class DiffParser:
     def parse_pull_request(self, pull_request: PullRequestInfo) -> ParsedDiff:
         parsed_files = []
         for pr_file in pull_request.files:
+            if self._should_ignore(pr_file.filename):
+                logger.debug(
+                    "Ignoring file %s based on ignore rules", pr_file.filename)
+                continue
             parsed = self._parse_file(pr_file)
             if parsed:
                 parsed_files.append(parsed)
@@ -309,6 +313,14 @@ class DiffParser:
             return f"Renamed file from {previous_filename} and detected {detail} function-level changes."
 
         return f"Detected {detail} function-level changes."
+
+    def _should_ignore(self, filename: str) -> bool:
+        lowered = filename.lower()
+        if "__pycache__" in lowered:
+            return True
+        if lowered.endswith(".pyc"):
+            return True
+        return False
 
     def _is_noise_line(self, content: str) -> bool:
         stripped = content.strip()

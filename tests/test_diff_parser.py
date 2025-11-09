@@ -173,3 +173,17 @@ def test_parser_ignores_trivial_module_change():
     parser = DiffParser()
     parsed = parser.parse_pull_request(build_pr(pr_file))
     assert parsed.files == []
+
+
+def test_parser_ignores_pyc_files():
+    pr_file = PullRequestFile(
+        filename="diffscribe/__pycache__/cli.cpython-313.pyc",
+        status="modified",
+        additions=0,
+        deletions=0,
+        changes=0,
+        patch=None,
+    )
+    parser = DiffParser()
+    parsed = parser.parse_pull_request(build_pr(pr_file))
+    assert parsed.files == []

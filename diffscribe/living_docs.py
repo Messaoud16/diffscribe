@@ -43,19 +43,18 @@ class LivingDocsGenerator:
         lines.append(purpose.strip())
         lines.append("")
 
-        lines.extend(
-            self._build_section(
-                "⚙️ Changes",
-                ai_summary.behavior_changes if ai_summary else None,
-                analysis,
-                include_fallback=True,
+        if ai_summary and ai_summary.behavior_changes:
+            lines.extend(
+                self._build_section(
+                    "⚙️ Changes",
+                    ai_summary.behavior_changes,
+                )
             )
-        )
         lines.extend(self._build_section(
-            "⚠️ Risks", self._collect_risks(analysis), analysis))
+            "⚠️ Risks", self._collect_risks(analysis)))
         lines.extend(
             self._build_section("✅ Suggested Actions",
-                                self._collect_actions(analysis), analysis)
+                                self._collect_actions(analysis))
         )
 
         return "\n".join(lines).strip() + "\n"
@@ -64,8 +63,7 @@ class LivingDocsGenerator:
         self,
         title: str,
         ai_items: Optional[List[str]],
-        analysis: AnalysisOutput,
-        include_fallback: bool = False,
+        analysis: AnalysisOutput | None = None,
     ) -> List[str]:
         items: List[str] = []
         seen: Set[str] = set()
@@ -76,16 +74,6 @@ class LivingDocsGenerator:
                 if text and text not in seen:
                     items.append(text)
                     seen.add(text)
-
-        if include_fallback and not items:
-            fallback = []
-            for file in analysis.parsed_diff.files:
-                for change in file.function_changes:
-                    formatted = self._format_function_behavior(
-                        file.filename, change)
-                    if formatted not in fallback:
-                        fallback.append(formatted)
-            items.extend(fallback)
 
         cleaned = [item.strip() for item in items if item.strip()]
         if not cleaned:

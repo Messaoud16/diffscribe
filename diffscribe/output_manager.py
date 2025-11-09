@@ -75,20 +75,6 @@ class CommentFormatter:
                     changes.append(text)
                     seen.add(text)
 
-        fallback: List[str] = []
-        for file_diff in analysis.parsed_diff.files:
-            for change in file_diff.function_changes:
-                formatted = self._format_function_behavior(
-                    file_diff.filename, change)
-                if formatted not in fallback:
-                    fallback.append(formatted)
-
-        if include_all_functions or not changes:
-            for item in fallback:
-                if item not in seen:
-                    changes.append(item)
-                    seen.add(item)
-
         return changes
 
     def _collect_risks(self, analysis: AnalysisOutput) -> List[str]:
