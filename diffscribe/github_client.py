@@ -37,6 +37,7 @@ class GitHubClient:
                 changes=file.changes,
                 patch=file.patch,
                 sha=file.sha,
+                previous_filename=getattr(file, "previous_filename", None),
             )
             for file in pull_request.get_files()
         ]

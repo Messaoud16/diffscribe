@@ -1,6 +1,7 @@
 from diffscribe.models import (
     AISummary,
     AnalysisOutput,
+    FunctionChange,
     ParsedDiff,
     ParsedFileDiff,
     PullRequestInfo,
@@ -38,7 +39,15 @@ def test_comment_formatter_includes_sections():
                 additions=5,
                 deletions=1,
                 summary="Detected 1 modified function-level changes.",
-                function_changes=[],
+                function_changes=[
+                    FunctionChange(
+                        name="update_pr_body",
+                        change_type="modified",
+                        lines_added=5,
+                        lines_removed=1,
+                        summary="Modified update_pr_body (+5 / -1 lines)",
+                    )
+                ],
             )
         ],
     )
@@ -56,6 +65,8 @@ def test_comment_formatter_includes_sections():
 
     assert "DiffScribe Summary" in body
     assert "Behavior Changes" in body
+    assert "Function Changes" in body
+    assert "update_pr_body" in body
+    assert "src/app.py" in body
     assert "Risks & Flags" in body
     assert "Suggested Actions" in body
-

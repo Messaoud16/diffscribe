@@ -9,7 +9,7 @@ COMMENT_MARKER = "<!-- DiffScribe -->"
 
 
 class CommentFormatter:
-    def render(self, analysis: AnalysisOutput) -> str:
+    def render(self, analysis: AnalysisOutput, include_all_functions: bool = False) -> str:
         lines: List[str] = []
         lines.append("## DiffScribe Summary")
 
@@ -25,6 +25,30 @@ class CommentFormatter:
             lines.append("**Behavior Changes**")
             for item in ai_summary.behavior_changes:
                 lines.append(f"- {item}")
+
+        function_items: List[str] = []
+        for file_diff in analysis.parsed_diff.files:
+            for change in file_diff.function_changes:
+                change_name = (
+                    "module-level logic" if change.name == "<module>" else change.name
+                )
+                if change.previous_name and change.previous_name != change.name:
+                    change_details = f"{change.change_type} ({change.previous_name} -> {change.name})"
+                else:
+                    change_details = f"{change.change_type}"
+                if change.lines_added or change.lines_removed:
+                    change_details += f" (+{change.lines_added}/-{change.lines_removed})"
+                function_items.append(
+                    f"- `{file_diff.filename}` · `{change_name}` · {change_details}"
+                )
+
+        if include_all_functions or function_items:
+            lines.append("")
+            lines.append("**Function Changes**")
+            if function_items:
+                lines.extend(function_items)
+            else:
+                lines.append("- Detected no function-level changes.")
 
         risk_items = []
         if ai_summary and ai_summary.risks:

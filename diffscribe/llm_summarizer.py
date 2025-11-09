@@ -45,6 +45,8 @@ class LLMSummarizer:
             "`summary` (concise paragraph), `behavior_changes` (array of bullet-ready strings), "
             "`risks` (array spotlighting testing gaps, shared modules, security/privacy), "
             "and `suggested_actions` (array of next steps or TODOs). "
+            "Mention every function present in the `function_changes` arrays for each file, "
+            "including internal or utility helpers, so reviewers can see the full surface area changed. "
             "Keep items brief, actionable, and avoid repetition. Do not add extra keys."
         )
         user_prompt = json.dumps(prompt_payload, indent=2)
@@ -127,6 +129,7 @@ class LLMSummarizer:
                 "filename": file.filename,
                 "language": file.language,
                 "status": file.status,
+                "previous_filename": file.previous_filename,
                 "summary": file.summary,
                 "additions": file.additions,
                 "deletions": file.deletions,
@@ -134,6 +137,7 @@ class LLMSummarizer:
                     {
                         "name": change.name,
                         "change_type": change.change_type,
+                        "previous_name": change.previous_name,
                         "summary": change.summary,
                         "lines_added": change.lines_added,
                         "lines_removed": change.lines_removed,
