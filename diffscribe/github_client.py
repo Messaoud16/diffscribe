@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 class GitHubClient:
     def __init__(self, token: str, base_url: Optional[str] = None) -> None:
-        self._github = Github(login_or_token=token, base_url=base_url)
+        if base_url:
+            self._github = Github(login_or_token=token, base_url=base_url)
+        else:
+            self._github = Github(login_or_token=token)
 
     def _get_repo(self, full_name: str) -> Repository.Repository:
         logger.debug("Fetching repository %s", full_name)
@@ -64,12 +67,13 @@ class GitHubClient:
         for comment in issue.get_comments():
             if comment.body and marker in comment.body:
                 if comment.body.strip() == full_body.strip():
-                    logger.info("Existing DiffScribe comment is up to date; no changes posted.")
+                    logger.info(
+                        "Existing DiffScribe comment is up to date; no changes posted.")
                     return
                 comment.edit(full_body)
-                logger.info("Updated existing DiffScribe comment on PR #%s.", pr_number)
+                logger.info(
+                    "Updated existing DiffScribe comment on PR #%s.", pr_number)
                 return
 
         issue.create_comment(full_body)
         logger.info("Posted new DiffScribe comment on PR #%s.", pr_number)
-
