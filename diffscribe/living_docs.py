@@ -3,9 +3,9 @@ from __future__ import annotations
 import datetime
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Set
 
-from .models import AnalysisOutput, PullRequestInfo
+from .models import AnalysisOutput, PullRequestInfo, FunctionChange
 
 
 class LivingDocsGenerator:
@@ -25,7 +25,9 @@ class LivingDocsGenerator:
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
         lines = [
-            f"# PR #{pr_info.number}: {pr_info.title}",
+            "# Diffscribe PR Assistant",
+            "────────────────────────────",
+            f"PR #{pr_info.number} — {pr_info.title}",
             "",
             f"- Author: {pr_info.author}",
             f"- Base → Head: {pr_info.base_branch} ← {pr_info.head_branch}",
@@ -34,57 +36,133 @@ class LivingDocsGenerator:
             "",
         ]
 
-        if ai_summary and ai_summary.summary:
-            lines.append("## Summary")
-            lines.append("")
-            lines.append(ai_summary.summary.strip())
-            lines.append("")
+        purpose = ai_summary.summary.strip(
+        ) if ai_summary and ai_summary.summary else pr_info.body or "Purpose unavailable."
+        lines.append("## 🧩 Purpose")
+        lines.append("")
+        lines.append(purpose.strip())
+        lines.append("")
 
         if ai_summary and ai_summary.behavior_changes:
-            lines.append("## Behavior Changes")
-            lines.append("")
-            for item in ai_summary.behavior_changes:
-                lines.append(f"- {item}")
-            lines.append("")
-
-        if risk and (risk.high_risk_files or risk.missing_tests or risk.deprecated_apis or risk.notes):
-            lines.append("## Risks & Flags")
-            lines.append("")
-            if risk.high_risk_files:
-                lines.append(f"- High-risk files: {', '.join(risk.high_risk_files)}")
-            if risk.missing_tests:
-                lines.append("- Missing related tests for code changes.")
-            for item in risk.deprecated_apis:
-                lines.append(f"- Deprecated API: {item}")
-            for note in risk.notes:
-                lines.append(f"- {note}")
-            lines.append("")
-
-        if ai_summary and ai_summary.suggested_actions:
-            lines.append("## Suggested Actions")
-            lines.append("")
-            for item in ai_summary.suggested_actions:
-                lines.append(f"- {item}")
-            lines.append("")
-
-        if analysis.parsed_diff.files:
-            lines.append("## Changed Files")
-            lines.append("")
-            for file in analysis.parsed_diff.files:
-                lines.append(f"### {file.filename}")
-                if file.summary:
-                    lines.append(file.summary)
-                if file.function_changes:
-                    lines.append("")
-                    lines.append("Function-level changes:")
-                    for change in file.function_changes:
-                        lines.append(f"- {change.summary}")
-                lines.append("")
-
-        if ai_summary and ai_summary.model:
-            lines.append(f"_Generated with {ai_summary.model}_")
+            lines.extend(
+                self._build_section(
+                    "⚙️ Changes",
+                    ai_summary.behavior_changes,
+                )
+            )
+        lines.extend(self._build_section(
+            "⚠️ Risks", self._collect_risks(analysis)))
+        lines.extend(
+            self._build_section("✅ Suggested Actions",
+                                self._collect_actions(analysis))
+        )
 
         return "\n".join(lines).strip() + "\n"
+
+    def _build_section(
+        self,
+        title: str,
+        ai_items: Optional[List[str]],
+        analysis: AnalysisOutput | None = None,
+    ) -> List[str]:
+        items: List[str] = []
+        seen: Set[str] = set()
+
+        if ai_items:
+            for item in ai_items:
+                text = item.strip()
+                if text and text not in seen:
+                    items.append(text)
+                    seen.add(text)
+
+        cleaned = [item.strip() for item in items if item.strip()]
+        if not cleaned:
+            return []
+        section_lines = [f"## {title}", ""]
+        section_lines.extend(f"- {item}" for item in cleaned)
+        section_lines.append("")
+        return section_lines
+
+    def _collect_risks(self, analysis: AnalysisOutput) -> List[str]:
+        risks: List[str] = []
+        ai_summary = analysis.ai_summary
+        risk_assessment = analysis.risk_assessment
+
+        if ai_summary and ai_summary.risks:
+            for risk in ai_summary.risks:
+                text = risk.strip()
+                if text:
+                    risks.append(text)
+
+        if risk_assessment:
+            if risk_assessment.high_risk_files:
+                risks.append(
+                    f"High-risk files modified: {', '.join(risk_assessment.high_risk_files)}")
+            if risk_assessment.missing_tests:
+                risks.append("Missing related tests covering modified code.")
+            for api in risk_assessment.deprecated_apis:
+                risks.append(f"Deprecated API usage: {api}")
+            for note in risk_assessment.notes:
+                risks.append(note)
+        return risks
+
+    def _collect_actions(self, analysis: AnalysisOutput) -> List[str]:
+        actions: List[str] = []
+        ai_summary = analysis.ai_summary
+        risk_assessment = analysis.risk_assessment
+
+        if ai_summary and ai_summary.suggested_actions:
+            filtered = [
+                action.strip()
+                for action in ai_summary.suggested_actions
+                if action
+                and action.strip().lower()
+                not in {
+                    "check for any potential security vulnerabilities introduced by new changes",
+                    "verify that all modified functions maintain expected behavior",
+                    "review the new server functionality and ensure it meets requirements",
+                }
+            ]
+            actions.extend(filtered)
+
+        if risk_assessment:
+            if risk_assessment.missing_tests and not any("unit test" in action.lower() for action in actions):
+                actions.append(
+                    "Add unit tests covering the modified functions.")
+            if risk_assessment.deprecated_apis and not any("deprecated" in action.lower() for action in actions):
+                actions.append(
+                    "Replace or refactor deprecated API usage highlighted above.")
+            if risk_assessment.high_risk_files and not any("review" in action.lower() for action in actions):
+                actions.append(
+                    "Perform a focused review of the high-risk modules that changed.")
+
+        docs = []
+        if ai_summary and ai_summary.suggested_actions:
+            for action in ai_summary.suggested_actions:
+                text = action.strip()
+                if text.lower().startswith("docs:"):
+                    docs.append(text.split(":", 1)[1].strip())
+        if docs:
+            actions.extend(docs)
+
+        return actions
+
+    def _format_function_behavior(self, filename: str, change: FunctionChange) -> str:
+        function_name = "module-level logic" if change.name == "<module>" else change.name
+        verb_map = {
+            "added": "Added",
+            "removed": "Removed",
+            "modified": "Updated",
+            "renamed": "Renamed",
+        }
+        verb = verb_map.get(change.change_type, "Updated")
+
+        if change.change_type == "renamed" and change.previous_name:
+            detail = f"{verb} `{change.previous_name}` to `{function_name}` in `{filename}`"
+        else:
+            detail = f"{verb} `{function_name}` in `{filename}`"
+
+        return detail
 
 
 def commit_living_doc(
@@ -93,8 +171,10 @@ def commit_living_doc(
     author_name: str = "github-actions[bot]",
     author_email: str = "41898282+github-actions[bot]@users.noreply.github.com",
 ) -> None:
-    subprocess.run(["git", "config", "--global", "user.name", author_name], check=False)
-    subprocess.run(["git", "config", "--global", "user.email", author_email], check=False)
+    subprocess.run(["git", "config", "--global",
+                   "user.name", author_name], check=False)
+    subprocess.run(["git", "config", "--global",
+                   "user.email", author_email], check=False)
     subprocess.run(["git", "add", str(path)], check=False)
     result = subprocess.run(
         ["git", "commit", "-m", f"docs: update PR {pr_number} summary"],
@@ -103,5 +183,5 @@ def commit_living_doc(
         text=True,
     )
     if result.returncode != 0 and "nothing to commit" not in (result.stderr or "").lower():
-        raise subprocess.CalledProcessError(result.returncode, result.args, output=result.stdout, stderr=result.stderr)
-
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, output=result.stdout, stderr=result.stderr)

@@ -68,6 +68,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="Directory for living documentation output.")
     parser.add_argument("--commit-docs", action="store_true",
                         help="Commit living documentation changes after generation.")
+    parser.add_argument("--include-all-functions", action="store_true",
+                        help="Explicitly list every detected function change in the summary output.")
+    parser.add_argument("--full-report", action="store_true",
+                        help="Produce a comprehensive report including all function changes and analysis details.")
+    parser.add_argument("--update-description", action="store_true",
+                        help="Update the PR description with the DiffScribe summary instead of commenting.")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable debug logging.")
     return parser.parse_args(argv)
@@ -139,11 +145,24 @@ def main(argv: list[str] | None = None) -> int:
                 logger.error(
                     "Failed to commit living documentation changes: %s", exc)
 
-    if not args.skip_comment:
-        formatter = CommentFormatter()
-        comment_body = formatter.render(analysis_output)
+    formatter = CommentFormatter()
+    include_all = (
+        args.include_all_functions
+        or args.full_report
+        or args.update_description
+    )
+    rendered_body = formatter.render(
+        analysis_output,
+        include_all_functions=include_all,
+    )
+
+    if args.update_description:
+        client.update_pr_body(
+            repo_full_name=repo_full_name, pr_number=pr_number_int, body=rendered_body)
+
+    if not args.skip_comment and not args.update_description:
         client.upsert_pr_comment(
-            repo_full_name=repo_full_name, pr_number=pr_number_int, body=comment_body)
+            repo_full_name=repo_full_name, pr_number=pr_number_int, body=rendered_body)
 
     return 0
 

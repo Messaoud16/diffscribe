@@ -5,6 +5,7 @@ from typing import Optional
 LANGUAGE_EXTENSIONS = {
     "python": {".py"},
     "javascript": {".js", ".jsx", ".mjs", ".cjs"},
+    "typescript": {".ts", ".tsx"},
 }
 
 

@@ -40,12 +40,16 @@ class LLMSummarizer:
         prompt_payload = self._build_prompt_payload(
             parsed_diff, risk_assessment)
         system_prompt = (
-            "You are DiffScribe, an assistant that explains pull requests to reviewers. "
+            "You are DiffScribe, an assistant that creates concise, reviewer-focused pull request summaries. "
             "Given structured PR data, respond with a JSON object containing keys: "
-            "`summary` (concise paragraph), `behavior_changes` (array of bullet-ready strings), "
-            "`risks` (array spotlighting testing gaps, shared modules, security/privacy), "
-            "and `suggested_actions` (array of next steps or TODOs). "
-            "Keep items brief, actionable, and avoid repetition. Do not add extra keys."
+            "`summary` (one short paragraph describing the PR intent), "
+            "`behavior_changes` (array of at most three bullet-ready strings describing high-level, user- or feature-facing behavior changes. "
+            "Group related helper/function edits into one statement and avoid listing every internal function by name), "
+            "`risks` (array highlighting concrete concerns such as unused variables, potential infinite loops, shared module impacts, or security-sensitive changes), "
+            "and `suggested_actions` (array of specific follow-up steps like adding tests or removing dead code). "
+            "Ignore formatting-only edits, module-level tweaks without behavioral impact, and helper functions that introduce no new risk. "
+            "Keep every item plain-English and actionable. "
+            "Do not add extra keys."
         )
         user_prompt = json.dumps(prompt_payload, indent=2)
 
@@ -127,6 +131,7 @@ class LLMSummarizer:
                 "filename": file.filename,
                 "language": file.language,
                 "status": file.status,
+                "previous_filename": file.previous_filename,
                 "summary": file.summary,
                 "additions": file.additions,
                 "deletions": file.deletions,
@@ -134,6 +139,7 @@ class LLMSummarizer:
                     {
                         "name": change.name,
                         "change_type": change.change_type,
+                        "previous_name": change.previous_name,
                         "summary": change.summary,
                         "lines_added": change.lines_added,
                         "lines_removed": change.lines_removed,

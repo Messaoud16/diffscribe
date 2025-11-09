@@ -14,6 +14,7 @@ class PullRequestFile:
     changes: int
     patch: Optional[str] = None
     sha: Optional[str] = None
+    previous_filename: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -56,10 +57,11 @@ class PullRequestInfo:
 @dataclass
 class FunctionChange:
     name: str
-    change_type: Literal["added", "modified", "removed"]
+    change_type: Literal["added", "modified", "removed", "renamed"]
     lines_added: int
     lines_removed: int
     summary: Optional[str] = None
+    previous_name: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -72,6 +74,7 @@ class ParsedFileDiff:
     status: str
     additions: int
     deletions: int
+    previous_filename: Optional[str] = None
     function_changes: List[FunctionChange] = field(default_factory=list)
     summary: Optional[str] = None
 
@@ -80,6 +83,7 @@ class ParsedFileDiff:
             "filename": self.filename,
             "language": self.language,
             "status": self.status,
+            "previous_filename": self.previous_filename,
             "additions": self.additions,
             "deletions": self.deletions,
             "summary": self.summary,

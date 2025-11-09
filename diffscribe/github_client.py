@@ -8,6 +8,7 @@ from github import Github, Repository, PullRequest
 from .models import PullRequestInfo, PullRequestFile
 
 DEFAULT_COMMENT_MARKER = "<!-- DiffScribe -->"
+DEFAULT_BODY_MARKER = "<!-- DiffScribe-Body -->"
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class GitHubClient:
                 changes=file.changes,
                 patch=file.patch,
                 sha=file.sha,
+                previous_filename=getattr(file, "previous_filename", None),
             )
             for file in pull_request.get_files()
         ]
@@ -77,3 +79,28 @@ class GitHubClient:
 
         issue.create_comment(full_body)
         logger.info("Posted new DiffScribe comment on PR #%s.", pr_number)
+
+    def update_pr_body(self, repo_full_name: str, pr_number: int, body: str, marker: str = DEFAULT_BODY_MARKER) -> None:
+        repo = self._get_repo(repo_full_name)
+        pull_request = repo.get_pull(pr_number)
+        body_block = body if marker in body else f"{marker}\n\n{body}"
+
+        existing_body = pull_request.body or ""
+        if marker in existing_body:
+            base_part = existing_body.split(marker)[0].rstrip()
+            if base_part:
+                new_body = f"{base_part}\n\n{body_block}"
+            else:
+                new_body = body_block
+        else:
+            joiner = "\n\n" if existing_body else ""
+            new_body = f"{existing_body}{joiner}{body_block}"
+
+        if new_body.strip() == existing_body.strip():
+            logger.info(
+                "Existing PR description already contains current DiffScribe block; no update.")
+            return
+
+        pull_request.edit(body=new_body)
+        logger.info(
+            "Updated PR description for PR #%s with DiffScribe summary.", pr_number)
